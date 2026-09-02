@@ -82,12 +82,73 @@ ORDER BY ticker, date;
 
 
 -- -------------------------------------------------------------
+-- 3. Rolling 30-day correlation (stocks vs crypto)
+-- -------------------------------------------------------------
+-- Answers the second half of the business question: does crypto
+-- move independently from stocks, or has it started moving
+-- together with them?
+--
+-- paired_returns collapses all stock tickers into one average
+-- daily return, and all crypto tickers into another, so the two
+-- asset classes become directly comparable series. Rows where
+-- either side is NULL (weekends, when crypto trades but stocks
+-- don't) are filtered out - correlation needs a real value on
+-- both sides. See DECISIONS.md for the tradeoff this involves.
+--
+-- CORR() doesn't support a sliding ROWS BETWEEN frame the way
+-- STDDEV() does, so this uses a self-join instead: each date is
+-- joined to itself across the prior 30 rows (by row number, so
+-- holiday gaps don't distort the window), then CORR() runs as a
+-- normal aggregate over that joined set. See DECISIONS.md for
+-- why this workaround was needed.
+--
+-- Validated: correlation was already ~0.80 going into the
+-- Terra/Luna crypto collapse (May 2022), peaked ~0.86-0.87
+-- mid-crash, then declined to ~0.62-0.66 by mid-June - crypto had
+-- already lost much of its "independent asset" behaviour relative
+-- to stocks before this crash, which briefly intensified the
+-- correlation before it faded again.
+-- -------------------------------------------------------------
+
+CREATE OR REPLACE TABLE stocks_crypto_db.clean.correlation AS
+WITH paired_returns AS (
+    SELECT
+        date,
+        AVG(CASE WHEN asset_class = 'stock' THEN daily_return END) AS avg_stock_return,
+        AVG(CASE WHEN asset_class = 'crypto' THEN daily_return END) AS avg_crypto_return
+    FROM stocks_crypto_db.clean.daily_returns
+    GROUP BY date
+    HAVING avg_stock_return IS NOT NULL AND avg_crypto_return IS NOT NULL
+),
+dated AS (
+    SELECT
+        date,
+        avg_stock_return,
+        avg_crypto_return,
+        ROW_NUMBER() OVER (ORDER BY date) AS row_num
+    FROM paired_returns
+)
+SELECT
+    a.date,
+    a.avg_stock_return,
+    a.avg_crypto_return,
+    CORR(b.avg_stock_return, b.avg_crypto_return) AS rolling_correlation_30d
+FROM dated a
+JOIN dated b
+    ON b.row_num BETWEEN a.row_num - 29 AND a.row_num
+GROUP BY a.date, a.avg_stock_return, a.avg_crypto_return
+ORDER BY a.date;
+
+
+-- -------------------------------------------------------------
 -- Sanity checks (run manually, not part of the pipeline)
 -- -------------------------------------------------------------
 -- SELECT COUNT(*) FROM stocks_crypto_db.clean.daily_returns;  -- expect 13240
 -- SELECT COUNT(*) FROM stocks_crypto_db.clean.volatility;     -- expect 13240
+-- SELECT COUNT(*) FROM stocks_crypto_db.clean.correlation;    -- expect ~1673
 
 
 -- -------------------------------------------------------------
--- Next up: rolling correlation between stocks vs crypto
+-- Next up: Power BI dashboard, connecting to Snowflake and
+-- building views around the business question
 -- -------------------------------------------------------------
