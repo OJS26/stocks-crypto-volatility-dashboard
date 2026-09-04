@@ -108,6 +108,11 @@ ORDER BY ticker, date;
 -- already lost much of its "independent asset" behaviour relative
 -- to stocks before this crash, which briefly intensified the
 -- correlation before it faded again.
+--
+-- WHERE a.row_num >= 30 excludes the first ~29 dates, which don't
+-- have a full 30-day window yet and produced an unstable, non-
+-- meaningful spike to 1.0 right at the start of the series when
+-- first plotted. See DECISIONS.md.
 -- -------------------------------------------------------------
 
 CREATE OR REPLACE TABLE stocks_crypto_db.clean.correlation AS
@@ -136,19 +141,59 @@ SELECT
 FROM dated a
 JOIN dated b
     ON b.row_num BETWEEN a.row_num - 29 AND a.row_num
+WHERE a.row_num >= 30
 GROUP BY a.date, a.avg_stock_return, a.avg_crypto_return
 ORDER BY a.date;
 
 
 -- -------------------------------------------------------------
+-- 4. Portfolio growth ($1000 invested)
+-- -------------------------------------------------------------
+-- Answers "what would $1000 have actually turned into" - an
+-- intuitive companion to the volatility/correlation metrics.
+--
+-- Daily returns compound rather than add, so this can't just sum
+-- daily_return values. Uses the log-sum-exp trick: the sum of logs
+-- of daily growth factors equals the log of their product, so
+-- summing LN(1 + daily_return) cumulatively and converting back
+-- with EXP() gives a genuine compounded running total.
+--
+-- ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW = "everything
+-- from the start of this ticker's history up to today" - an
+-- unbounded window, unlike the fixed 30-day windows used above.
+-- COALESCE(daily_return, 0) handles each ticker's first day (NULL
+-- daily_return) by treating it as "no change yet" so LN() doesn't
+-- break on a NULL input.
+--
+-- Validated: $1000 in AAPL grew to ~$4,384 by 2026-08-31 (~4.4x);
+-- $1000 in BTC-USD grew to ~$10,909 (~10.9x) over the same period -
+-- both believable, and usefully different multiples for the chart.
+-- -------------------------------------------------------------
+
+CREATE OR REPLACE TABLE stocks_crypto_db.clean.portfolio_growth AS
+SELECT
+    date,
+    ticker,
+    asset_class,
+    daily_return,
+    1000 * EXP(SUM(LN(1 + COALESCE(daily_return, 0))) OVER (
+        PARTITION BY ticker
+        ORDER BY date
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    )) AS portfolio_value
+FROM stocks_crypto_db.clean.daily_returns
+ORDER BY ticker, date;
+
+
+-- -------------------------------------------------------------
 -- Sanity checks (run manually, not part of the pipeline)
 -- -------------------------------------------------------------
--- SELECT COUNT(*) FROM stocks_crypto_db.clean.daily_returns;  -- expect 13240
--- SELECT COUNT(*) FROM stocks_crypto_db.clean.volatility;     -- expect 13240
--- SELECT COUNT(*) FROM stocks_crypto_db.clean.correlation;    -- expect ~1673
+-- SELECT COUNT(*) FROM stocks_crypto_db.clean.daily_returns;    -- expect 13240
+-- SELECT COUNT(*) FROM stocks_crypto_db.clean.volatility;       -- expect 13240
+-- SELECT COUNT(*) FROM stocks_crypto_db.clean.correlation;      -- expect ~1644
+-- SELECT COUNT(*) FROM stocks_crypto_db.clean.portfolio_growth; -- expect 13240
 
 
 -- -------------------------------------------------------------
--- Next up: Power BI dashboard, connecting to Snowflake and
--- building views around the business question
+-- Dashboard: Power BI, connected to the clean schema (Import mode)
 -- -------------------------------------------------------------

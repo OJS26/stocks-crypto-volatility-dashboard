@@ -61,9 +61,27 @@ in Snowflake SQL. Worth mentioning in an interview as a real
 example of hitting a database limitation and finding a working
 alternative, not just writing the "textbook" version of a query.
 
+## Trimming the first 29 rows of correlation (unstable early window)
+
+Noticed the correlation chart in Power BI had a sharp spike straight
+up to 1.0 right at the very start of the timeline (Jan 2020). This
+wasn't a real signal - the first ~29 rows of the rolling window
+don't have a full 30 days of history yet (the same edge case noted
+for volatility), so correlation was being calculated on a tiny
+number of points early on, which is statistically unstable and can
+swing to extreme values that don't mean anything.
+
+Fixed this in SQL rather than filtering it out in Power BI, so the
+`clean.correlation` table itself is trustworthy on its own, not just
+the dashboard view of it. Added `WHERE row_num >= 30` to the final
+query, using the row_num already generated for the self-join
+workaround - this keeps only dates where the full 30-day window is
+genuinely present. Row count dropped from 1,673 to 1,644 (~29 rows
+removed), exactly as expected.
+
 ---
 
-## Findings worth remembering (not decisions, but good to have on hand)
+ (not decisions, but good to have on hand)
 
 - **AAPL rolling volatility roughly tripled** during the COVID
   crash, from ~0.017 (mid-Feb 2020) to ~0.058 (early Apr 2020) -
