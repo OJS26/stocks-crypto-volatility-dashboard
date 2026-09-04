@@ -79,9 +79,28 @@ workaround - this keeps only dates where the full 30-day window is
 genuinely present. Row count dropped from 1,673 to 1,644 (~29 rows
 removed), exactly as expected.
 
+## Switching Power BI to key-pair authentication
+
+Power BI's standard username/password connection to Snowflake
+stopped working partway through this project - not a bug on my
+end, but Snowflake's industry-wide deprecation of single-factor
+password authentication, which was in its final enforcement window
+(Aug-Oct 2026) exactly when this hit. Password auth for human users
+was being actively phased out account-wide.
+
+Fixed it properly rather than working around it: generated an RSA
+key pair locally (OpenSSL), registered the public key against my
+Snowflake user (`ALTER USER ... SET RSA_PUBLIC_KEY=...`), and
+reconfigured Power BI's Snowflake connector to authenticate with
+the private key instead of a password. Power BI Desktop only
+gained key-pair support as a GA (non-preview) feature in February
+2026, so this is a genuinely current authentication method, not a
+legacy workaround - worth mentioning as real, up-to-date
+infrastructure experience, not just "I fixed a login error."
+
 ---
 
- (not decisions, but good to have on hand)
+## Findings worth remembering (not decisions, but good to have on hand)
 
 - **AAPL rolling volatility roughly tripled** during the COVID
   crash, from ~0.017 (mid-Feb 2020) to ~0.058 (early Apr 2020) -

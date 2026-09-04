@@ -46,7 +46,16 @@ Python (extract) -> Snowflake (load + transform, SQL) -> Power BI (visualise)
      workaround, since Snowflake's `CORR()` doesn't support a
      sliding window - see `DECISIONS.md`)
 4. **Visualise** - Power BI, connected directly to the `clean`
-   schema. *(in progress)*
+   schema via key-pair authentication. Three linked visuals on one
+   page: rolling volatility by asset, rolling correlation between
+   stocks and crypto, and $1000-invested growth by asset.
+
+## Dashboard
+
+![Volatility timeline](./screenshots/volatility_timeline.png)
+![Correlation view](./screenshots/correlation_view.png)
+![Portfolio growth](./screenshots/portfolio_growth.png)
+![Full dashboard](./screenshots/dashboard_overview.png)
 
 ## Findings so far
 
@@ -75,7 +84,7 @@ handling, and the `CORR()` workaround is in
 - [x] Daily returns
 - [x] Rolling volatility
 - [x] Rolling correlation
-- [ ] Power BI dashboard
+- [x] Power BI dashboard
 
 ## Tools
 
